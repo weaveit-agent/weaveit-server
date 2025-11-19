@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "ts-node-esm src/server.ts",
+    "devo": "ts-node-esm src/server.ts",
+    "dev": "node --loader ts-node/esm src/server.ts",
+    "dev:watch": "tsx watch src/server.ts",
     "d": "node --loader ts-node/esm src/server.ts",
     "start": "node dist/server.js",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
