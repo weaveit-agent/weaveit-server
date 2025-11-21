@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import videosStatusRoute from '../weaveit-generator/videosStatusRoute';
 import generateRoute from '../weaveit-generator/generateRoute';
-import { testConnection, getVideoByJobId, getVideoByVideoId } from './db';
+import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet } from './db';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -62,6 +62,31 @@ app.get('/api/videos/:videoId', async (req, res) => {
   } catch (err) {
     console.error('Error serving video:', err);
     res.status(500).json({ error: 'Failed to retrieve video' });
+  }
+});
+
+// Get all video IDs for a wallet address
+app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    
+    const videos = await getVideosByWallet(walletAddress);
+
+    res.json({
+      wallet_address: walletAddress,
+      count: videos.length,
+      videos: videos.map(v => ({
+        video_id: v.video_id,
+        job_id: v.job_id,
+        duration_sec: v.duration_sec,
+        format: v.format,
+        created_at: v.created_at,
+        video_url: `/api/videos/${v.video_id}`
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching wallet videos:', err);
+    res.status(500).json({ error: 'Failed to retrieve videos' });
   }
 });
 

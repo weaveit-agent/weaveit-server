@@ -155,6 +155,23 @@ export async function getVideoByVideoId(videoId: string): Promise<Buffer | null>
   return result.rows[0]?.video_data || null;
 }
 
+export async function getVideosByWallet(walletAddress: string): Promise<Array<{
+  video_id: string;
+  job_id: string;
+  duration_sec: number | null;
+  format: string;
+  created_at: Date;
+}>> {
+  const result = await pool.query(
+    `SELECT video_id, job_id, duration_sec, format, created_at 
+     FROM videos 
+     WHERE wallet_address = $1 
+     ORDER BY created_at DESC`,
+    [walletAddress]
+  );
+  return result.rows;
+}
+
 // Cleanup old jobs
 export async function cleanupOldJobs(daysOld: number = 7): Promise<number> {
   const result = await pool.query(
