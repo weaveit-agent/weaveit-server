@@ -27,8 +27,8 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
 
     console.log('weaveit-generator: Processing tutorial request:', { title, walletAddress });
 
-    // Create job in database
-    jobId = await createVideoJob(walletAddress, script);
+    // Create job in database with job_type = 'video'
+    jobId = await createVideoJob(walletAddress, script, title, 'video');
     console.log('Created job:', jobId);
 
     // Update status to generating

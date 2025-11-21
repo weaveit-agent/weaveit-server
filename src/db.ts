@@ -66,14 +66,16 @@ export async function getUserPoints(walletAddress: string): Promise<number> {
 // Job management
 export async function createVideoJob(
   walletAddress: string,
-  scriptBody: string
+  scriptBody: string,
+  title?: string,
+  jobType: 'video' | 'audio' = 'video'
 ): Promise<string> {
   await ensureUser(walletAddress);
   const result = await pool.query(
-    `INSERT INTO video_jobs (wallet_address, script_body, status) 
-     VALUES ($1, $2, 'pending') 
+    `INSERT INTO video_jobs (wallet_address, script_body, title, job_type, status) 
+     VALUES ($1, $2, $3, $4, 'pending') 
      RETURNING job_id`,
-    [walletAddress, scriptBody]
+    [walletAddress, scriptBody, title || null, jobType]
   );
   return result.rows[0].job_id;
 }
@@ -112,13 +114,31 @@ export async function storeVideo(
   walletAddress: string,
   videoData: Buffer,
   durationSec?: number,
-  format: string = 'mp4'
+  format: string = 'mp4',
+  audioData?: Buffer
 ): Promise<string> {
   const result = await pool.query(
-    `INSERT INTO videos (job_id, wallet_address, video_data, duration_sec, format) 
+    `INSERT INTO videos (job_id, wallet_address, video_data, duration_sec, format, audio_data) 
+     VALUES ($1, $2, $3, $4, $5, $6) 
+     RETURNING video_id`,
+    [jobId, walletAddress, videoData, durationSec, format, audioData || null]
+  );
+  return result.rows[0].video_id;
+}
+
+// Audio-only storage
+export async function storeAudio(
+  jobId: string,
+  walletAddress: string,
+  audioData: Buffer,
+  durationSec?: number,
+  format: string = 'mp3'
+): Promise<string> {
+  const result = await pool.query(
+    `INSERT INTO videos (job_id, wallet_address, audio_data, duration_sec, format) 
      VALUES ($1, $2, $3, $4, $5) 
      RETURNING video_id`,
-    [jobId, walletAddress, videoData, durationSec, format]
+    [jobId, walletAddress, audioData, durationSec, format]
   );
   return result.rows[0].video_id;
 }
@@ -170,6 +190,51 @@ export async function getVideosByWallet(walletAddress: string): Promise<Array<{
     [walletAddress]
   );
   return result.rows;
+}
+
+// Get all content (videos and audios) for a wallet
+export async function getContentByWallet(walletAddress: string): Promise<Array<{
+  video_id: string;
+  job_id: string;
+  duration_sec: number | null;
+  format: string;
+  content_type: 'video' | 'audio';
+  created_at: Date;
+}>> {
+  const result = await pool.query(
+    `SELECT 
+       v.video_id, 
+       v.job_id, 
+       v.duration_sec, 
+       v.format, 
+       v.created_at,
+       CASE 
+         WHEN v.video_data IS NOT NULL THEN 'video'
+         ELSE 'audio'
+       END as content_type
+     FROM videos v
+     WHERE v.wallet_address = $1 
+     ORDER BY v.created_at DESC`,
+    [walletAddress]
+  );
+  return result.rows;
+}
+
+// Audio retrieval
+export async function getAudioByJobId(jobId: string): Promise<Buffer | null> {
+  const result = await pool.query(
+    'SELECT audio_data FROM videos WHERE job_id = $1',
+    [jobId]
+  );
+  return result.rows[0]?.audio_data || null;
+}
+
+export async function getAudioByAudioId(audioId: string): Promise<Buffer | null> {
+  const result = await pool.query(
+    'SELECT audio_data FROM videos WHERE video_id = $1',
+    [audioId]
+  );
+  return result.rows[0]?.audio_data || null;
 }
 
 // Cleanup old jobs

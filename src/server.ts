@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import videosStatusRoute from '../weaveit-generator/videosStatusRoute';
 import generateRoute from '../weaveit-generator/generateRoute';
-import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet } from './db';
+import generateAudioRoute from '../weaveit-generator/generateAudioRoute';
+import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet } from './db';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -18,6 +19,7 @@ app.use(express.json());
 // Mount API routers under `/api` so frontend can call `/api/generate` and `/api/videos/status/:id`
 app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
+app.use('/api', generateAudioRoute);
 
 // Video serving endpoint - serves video data from database by job ID
 app.get('/api/videos/job/:jobId', async (req, res) => {
@@ -87,6 +89,81 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
   } catch (err) {
     console.error('Error fetching wallet videos:', err);
     res.status(500).json({ error: 'Failed to retrieve videos' });
+  }
+});
+
+// Get all content (videos and audios) for a wallet address
+app.get('/api/wallet/:walletAddress/content', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    
+    const content = await getContentByWallet(walletAddress);
+
+    res.json({
+      wallet_address: walletAddress,
+      count: content.length,
+      content: content.map(c => ({
+        id: c.video_id,
+        job_id: c.job_id,
+        content_type: c.content_type,
+        duration_sec: c.duration_sec,
+        format: c.format,
+        created_at: c.created_at,
+        url: c.content_type === 'video' ? `/api/videos/${c.video_id}` : `/api/audio/${c.video_id}`,
+        preview_url: c.content_type === 'video' ? `/api/videos/${c.video_id}` : `/api/audio/${c.video_id}`
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching wallet content:', err);
+    res.status(500).json({ error: 'Failed to retrieve content' });
+  }
+});
+
+// Audio serving endpoint - serves audio data from database by job ID
+app.get('/api/audio/job/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    const audioBuffer = await getAudioByJobId(jobId);
+
+    if (!audioBuffer) {
+      res.status(404).json({ error: 'Audio not found' });
+      return;
+    }
+
+    // Set proper headers for audio streaming
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', audioBuffer.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Disposition', `inline; filename="audio-${jobId}.mp3"`);
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error('Error serving audio:', err);
+    res.status(500).json({ error: 'Failed to retrieve audio' });
+  }
+});
+
+// Audio serving endpoint - serves audio data from database by audio ID
+app.get('/api/audio/:audioId', async (req, res) => {
+  try {
+    const { audioId } = req.params;
+    
+    const audioBuffer = await getAudioByAudioId(audioId);
+
+    if (!audioBuffer) {
+      res.status(404).json({ error: 'Audio not found' });
+      return;
+    }
+
+    // Set proper headers for audio streaming
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', audioBuffer.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Disposition', `inline; filename="audio-${audioId}.mp3"`);
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error('Error serving audio:', err);
+    res.status(500).json({ error: 'Failed to retrieve audio' });
   }
 });
 

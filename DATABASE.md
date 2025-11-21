@@ -17,6 +17,8 @@ job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 wallet_address TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
 
     script_body    TEXT NOT NULL,   -- temporary, can be deleted after success
+    title          TEXT,             -- optional title for the content
+    job_type       TEXT NOT NULL DEFAULT 'video',  -- 'video' | 'audio'
     status         TEXT NOT NULL DEFAULT 'pending',
         -- pending | generating | failed | completed
 
@@ -26,13 +28,14 @@ wallet_address TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
 
 );
 
--- FINAL VIDEOS
+-- FINAL VIDEOS (and audio-only outputs)
 CREATE TABLE videos (
 video_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 job_id UUID NOT NULL REFERENCES video_jobs(job_id) ON DELETE CASCADE,
 wallet_address TEXT NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
 
-    video_data     BYTEA NOT NULL,   -- or store external link in video_url
+    video_data     BYTEA,            -- video file data (NULL for audio-only)
+    audio_data     BYTEA,            -- audio file data (NULL for video-only)
     duration_sec   INTEGER,
     format         TEXT DEFAULT 'mp4',
     created_at     TIMESTAMP NOT NULL DEFAULT NOW()
