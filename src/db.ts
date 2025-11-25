@@ -47,12 +47,95 @@ export async function testConnection(): Promise<void> {
 
 // User management
 export async function ensureUser(walletAddress: string): Promise<void> {
-  await pool.query(
-    `INSERT INTO users (wallet_address) 
-     VALUES ($1) 
-     ON CONFLICT (wallet_address) DO NOTHING`,
-    [walletAddress]
-  );
+  // First, ensure any expired trial is processed for this wallet (no-op if user missing)
+  try {
+    await expireTrialsForWallet(walletAddress);
+  } catch (err) {
+    // ignore expiry errors here; we'll continue to ensure user exists
+    console.error('Error expiring trials during ensureUser:', err);
+  }
+
+  // If the user doesn't exist, create them with a 7-day trial of 28 credits.
+  // We attempt to set `trial_expires_at` if that column exists; if not, fall back to inserting only prompt_points.
+  const exists = await pool.query('SELECT 1 FROM users WHERE wallet_address = $1', [walletAddress]);
+  if (exists.rowCount === 0) {
+    try {
+      await pool.query(
+        `INSERT INTO users (wallet_address, prompt_points, trial_expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+        [walletAddress, 28]
+      );
+    } catch (err) {
+      // Fallback if `trial_expires_at` column doesn't exist or other schema differences
+      await pool.query(
+        `INSERT INTO users (wallet_address, prompt_points)
+         VALUES ($1, $2)`,
+        [walletAddress, 28]
+      );
+    }
+  }
+}
+
+// Expire trial credits for a wallet if trial_expires_at is passed.
+// Behavior:
+// - If `trial_expires_at` column is missing, this is a no-op.
+// - If trial has expired and the user's `prompt_points` is <= initialTrialCredits (28), zero the points.
+// - Clear `trial_expires_at` after processing so it is not processed again.
+export async function expireTrialsForWallet(walletAddress: string, initialTrialCredits: number = 28): Promise<number | null> {
+  try {
+    const result = await pool.query(
+      'SELECT trial_expires_at, prompt_points FROM users WHERE wallet_address = $1',
+      [walletAddress]
+    );
+    if (result.rowCount === 0) return null;
+    const row = result.rows[0];
+    const expiresAt: Date | null = row.trial_expires_at || null;
+    const points: number = row.prompt_points || 0;
+    if (!expiresAt) return points;
+
+    const now = new Date();
+    const expired = new Date(expiresAt) < now;
+    if (!expired) return points;
+
+    if (points <= initialTrialCredits) {
+      // Likely only trial credits remain — zero them
+      await pool.query(
+        'UPDATE users SET prompt_points = 0, trial_expires_at = NULL WHERE wallet_address = $1',
+        [walletAddress]
+      );
+      return 0;
+    }
+
+    // User has more than initial trial credits — preserve their balance but clear the trial marker
+    await pool.query(
+      'UPDATE users SET trial_expires_at = NULL WHERE wallet_address = $1',
+      [walletAddress]
+    );
+    return points;
+  } catch (err: any) {
+    // If the column doesn't exist, ignore and return null so callers can continue safely
+    const m = String(err?.message || '').toLowerCase();
+    if (m.includes('column') && m.includes('trial_expires_at')) return null;
+    throw err;
+  }
+}
+
+// Get basic user info for frontend balance checks
+export async function getUserInfo(walletAddress: string): Promise<{ prompt_points: number; trial_expires_at: Date | null } | null> {
+  try {
+    const result = await pool.query('SELECT prompt_points, trial_expires_at FROM users WHERE wallet_address = $1', [walletAddress]);
+    if (result.rowCount === 0) return null;
+    return { prompt_points: result.rows[0].prompt_points || 0, trial_expires_at: result.rows[0].trial_expires_at || null };
+  } catch (err: any) {
+    // If trial_expires_at column missing, fall back to only prompt_points
+    const m = String(err?.message || '').toLowerCase();
+    if (m.includes('column') && m.includes('trial_expires_at')) {
+      const r2 = await pool.query('SELECT prompt_points FROM users WHERE wallet_address = $1', [walletAddress]);
+      if (r2.rowCount === 0) return null;
+      return { prompt_points: r2.rows[0].prompt_points || 0, trial_expires_at: null };
+    }
+    throw err;
+  }
 }
 
 export async function getUserPoints(walletAddress: string): Promise<number> {
@@ -181,12 +264,14 @@ export async function getVideosByWallet(walletAddress: string): Promise<Array<{
   duration_sec: number | null;
   format: string;
   created_at: Date;
+  title: string | null;
 }>> {
   const result = await pool.query(
-    `SELECT video_id, job_id, duration_sec, format, created_at 
-     FROM videos 
-     WHERE wallet_address = $1 
-     ORDER BY created_at DESC`,
+    `SELECT v.video_id, v.job_id, v.duration_sec, v.format, v.created_at, j.title
+     FROM videos v
+     LEFT JOIN video_jobs j ON v.job_id = j.job_id
+     WHERE v.wallet_address = $1 
+     ORDER BY v.created_at DESC`,
     [walletAddress]
   );
   return result.rows;
@@ -200,6 +285,7 @@ export async function getContentByWallet(walletAddress: string): Promise<Array<{
   format: string;
   content_type: 'video' | 'audio';
   created_at: Date;
+  title: string | null;
 }>> {
   const result = await pool.query(
     `SELECT 
@@ -208,11 +294,13 @@ export async function getContentByWallet(walletAddress: string): Promise<Array<{
        v.duration_sec, 
        v.format, 
        v.created_at,
+       j.title,
        CASE 
          WHEN v.video_data IS NOT NULL THEN 'video'
          ELSE 'audio'
        END as content_type
      FROM videos v
+     LEFT JOIN video_jobs j ON v.job_id = j.job_id
      WHERE v.wallet_address = $1 
      ORDER BY v.created_at DESC`,
     [walletAddress]
@@ -255,3 +343,26 @@ export async function clearScriptBody(jobId: string): Promise<void> {
 }
 
 export default pool;
+
+// Award prompt points to a user (create user if necessary)
+export async function awardUserPoints(walletAddress: string, points: number): Promise<number> {
+  await ensureUser(walletAddress);
+  const result = await pool.query(
+    `UPDATE users SET prompt_points = COALESCE(prompt_points, 0) + $1 WHERE wallet_address = $2 RETURNING prompt_points`,
+    [points, walletAddress]
+  );
+  return result.rows[0]?.prompt_points || 0;
+}
+
+// Deduct prompt points atomically, checking balance first.
+// Returns new balance if successful, or null if insufficient credits.
+export async function deductUserPoints(walletAddress: string, points: number): Promise<number | null> {
+  const result = await pool.query(
+    `UPDATE users 
+     SET prompt_points = prompt_points - $1 
+     WHERE wallet_address = $2 AND prompt_points >= $1 
+     RETURNING prompt_points`,
+    [points, walletAddress]
+  );
+  return result.rowCount > 0 ? (result.rows[0]?.prompt_points || 0) : null;
+}

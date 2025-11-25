@@ -1,9 +1,9 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import { enhanceScript } from '../src/codeAnalyzer';
-import { generateSpeechBuffer } from '../src/textToSpeech';
-import { generateScrollingScriptVideoBuffer } from '../src/videoGenerator';
-import { createVideoJob, updateJobStatus, storeVideo } from '../src/db';
+import { enhanceScript } from '../codeAnalyzer';
+import { generateSpeechBuffer } from '../textToSpeech';
+import { generateScrollingScriptVideoBuffer } from '../videoGenerator';
+import { createVideoJob, updateJobStatus, storeVideo, deductUserPoints } from '../db';
 
 const router = express.Router();
 
@@ -26,6 +26,18 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
     }
 
     console.log('weaveit-generator: Processing tutorial request:', { title, walletAddress });
+
+    // Check credit balance before proceeding (video costs 2 credits)
+    const VIDEO_COST = 2;
+    const newBalance = await deductUserPoints(walletAddress, VIDEO_COST);
+    if (newBalance === null) {
+      res.status(402).json({ 
+        error: 'Insufficient credits for video generation',
+        required: VIDEO_COST,
+        message: 'Please purchase credits or wait for trial replenishment'
+      });
+      return;
+    }
 
     // Create job in database with job_type = 'video'
     jobId = await createVideoJob(walletAddress, script, title, 'video');
@@ -56,6 +68,8 @@ const generateHandler = async (req: Request, res: Response): Promise<void> => {
       jobId,
       videoId,
       status: 'completed',
+      creditsDeducted: VIDEO_COST,
+      remainingCredits: newBalance,
       message: 'Educational tutorial video generated successfully',
     });
     return;

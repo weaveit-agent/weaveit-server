@@ -2,10 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import videosStatusRoute from '../weaveit-generator/videosStatusRoute';
-import generateRoute from '../weaveit-generator/generateRoute';
-import generateAudioRoute from '../weaveit-generator/generateAudioRoute';
+import videosStatusRoute from './weaveit-generator/videosStatusRoute';
+import generateRoute from './weaveit-generator/generateRoute';
+import generateAudioRoute from './weaveit-generator/generateAudioRoute';
 import { testConnection, getVideoByJobId, getVideoByVideoId, getVideosByWallet, getAudioByJobId, getAudioByAudioId, getContentByWallet } from './db';
+import paymentsRoute from './paymentsRoute';
+import usersRoute from './usersRoute';
 
 // Load environment variables from root .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -20,6 +22,8 @@ app.use(express.json());
 app.use('/api', videosStatusRoute);
 app.use('/api', generateRoute);
 app.use('/api', generateAudioRoute);
+app.use('/api', paymentsRoute);
+app.use('/api', usersRoute);
 
 // Video serving endpoint - serves video data from database by job ID
 app.get('/api/videos/job/:jobId', async (req, res) => {
@@ -80,6 +84,7 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
       videos: videos.map(v => ({
         video_id: v.video_id,
         job_id: v.job_id,
+        title: v.title,
         duration_sec: v.duration_sec,
         format: v.format,
         created_at: v.created_at,
@@ -105,6 +110,7 @@ app.get('/api/wallet/:walletAddress/content', async (req, res) => {
       content: content.map(c => ({
         id: c.video_id,
         job_id: c.job_id,
+        title: c.title,
         content_type: c.content_type,
         duration_sec: c.duration_sec,
         format: c.format,

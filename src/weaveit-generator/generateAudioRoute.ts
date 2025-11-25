@@ -1,8 +1,8 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import { enhanceScript } from '../src/codeAnalyzer';
-import { generateSpeechBuffer } from '../src/textToSpeech';
-import { createVideoJob, updateJobStatus, storeAudio } from '../src/db';
+import { enhanceScript } from '../codeAnalyzer';
+import { generateSpeechBuffer } from '../textToSpeech';
+import { createVideoJob, updateJobStatus, storeAudio, deductUserPoints } from '../db';
 
 const router = express.Router();
 
@@ -25,6 +25,18 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
     }
 
     console.log('weaveit-generator: Processing audio-only request:', { title, walletAddress });
+
+    // Check credit balance before proceeding (audio costs 1 credit)
+    const AUDIO_COST = 1;
+    const newBalance = await deductUserPoints(walletAddress, AUDIO_COST);
+    if (newBalance === null) {
+      res.status(402).json({ 
+        error: 'Insufficient credits for audio generation',
+        required: AUDIO_COST,
+        message: 'Please purchase credits or wait for trial replenishment'
+      });
+      return;
+    }
 
     // Create job in database with job_type = 'audio'
     jobId = await createVideoJob(walletAddress, script, title, 'audio');
@@ -51,6 +63,8 @@ const generateAudioHandler = async (req: Request, res: Response): Promise<void> 
       jobId,
       audioId,
       status: 'completed',
+      creditsDeducted: AUDIO_COST,
+      remainingCredits: newBalance,
       message: 'Audio tutorial generated successfully',
     });
     return;
