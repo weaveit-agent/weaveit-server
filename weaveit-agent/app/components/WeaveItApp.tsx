@@ -376,23 +376,32 @@ const ScriptForm: React.FC<ScriptFormProps> = ({ onVideoGenerated }) => {
 
       // Construct URL based on generation type and response data
       let contentUrl: string | null = null
+      let contentId: string | null = null
       
       if (generationType === "audio") {
         // For audio generation, use audio-specific endpoint
-        const audioId = videoData.audioId
+        const audioId = videoData.audioId || videoData.audio_id
+        contentId = audioId
         if (audioId) {
           contentUrl = `${backendBaseUrl}/api/audio/${audioId}`
+          console.log(`Audio generation successful. ID: ${audioId}, URL: ${contentUrl}`)
+        } else {
+          console.warn("No audioId in response:", videoData)
         }
       } else {
         // For video generation, use video endpoint
-        const contentId = videoData.contentId || videoData.videoId
-        if (contentId) {
-          contentUrl = `${backendBaseUrl}/api/videos/${contentId}`
+        const contentIdFromResponse = videoData.contentId || videoData.content_id || videoData.videoId || videoData.video_id
+        contentId = contentIdFromResponse
+        if (contentIdFromResponse) {
+          contentUrl = `${backendBaseUrl}/api/videos/${contentIdFromResponse}`
+          console.log(`Video generation successful. ID: ${contentIdFromResponse}, URL: ${contentUrl}`)
+        } else {
+          console.warn("No videoId/contentId in response:", videoData)
         }
       }
       
       if (!contentUrl) {
-        throw new Error(`No ${generationType} URL or content ID received from backend`)
+        throw new Error(`No ${generationType} URL or content ID received from backend. Response: ${JSON.stringify(videoData)}`)
       }
 
       console.log("Content URL constructed:", contentUrl)
@@ -762,29 +771,45 @@ export default function WeaveItApp() {
         const backendBaseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
         const walletAddress = publicKey.toBase58()
         
+        console.log(`Fetching content for wallet: ${walletAddress}`)
+        console.log(`Backend URL: ${backendBaseUrl}`)
+        
         // Fetch all content (videos and audio) from unified endpoint
         const response = await fetch(`${backendBaseUrl}/api/wallet/${walletAddress}/content`)
 
         if (!response.ok) {
-          console.error("Failed to fetch content:", response.statusText)
+          console.error("Failed to fetch content:", response.status, response.statusText)
+          setVideos([])
           return
         }
 
         const data = await response.json()
-        console.log("Fetched content:", data)
+        console.log("Fetched content data:", data)
+
+        if (!data.content || !Array.isArray(data.content)) {
+          console.warn("Response missing content array", data)
+          setVideos([])
+          return
+        }
 
         // Transform backend response to match our content format
-        const fetchedContent = data.content.map((item: any) => ({
-          id: item.id,
-          title: item.title || `${item.content_type === 'video' ? 'Video' : 'Audio'} ${item.id.slice(0, 8)}`,
-          url: `${backendBaseUrl}${item.url}`,
-          createdAt: item.created_at,
-          contentType: item.content_type,
-        }))
+        const fetchedContent = data.content.map((item: any) => {
+          const itemUrl = item.url ? `${backendBaseUrl}${item.url}` : item.url
+          console.log(`Processing content item: id=${item.id}, url=${itemUrl}`)
+          return {
+            id: item.id,
+            title: item.title || `${item.content_type === 'video' ? 'Video' : 'Audio'} ${item.id.slice(0, 8)}`,
+            url: itemUrl,
+            createdAt: item.created_at,
+            contentType: item.content_type,
+          }
+        })
 
+        console.log("Processed content:", fetchedContent)
         setVideos(fetchedContent)
       } catch (error) {
         console.error("Error fetching content:", error)
+        setVideos([])
       } finally {
         setLoadingVideos(false)
       }
