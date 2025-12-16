@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # 1. The Database (Same as before)
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: weaveit_test_db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d weaveit_test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. The Backend (YOUR NEW CODE)
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      # Connect to local db container
+      DATABASE_URL: postgresql://testuser:testpassword@db:5432/weaveit_test_db
+      PORT: 3001
+      # Mock keys
+      OPENAI_API_KEY: "sk-mock-key-for-testing"
+      WEBHOOK_SECRET: "mock-secret"
+      WEBHOOK_URL: "http://localhost:3001/api/webhooks/mock"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 3. The Frontend (STABLE)
+  # This proves your new backend change didn't break the existing frontend
+  frontend:
+    # 🟢 Pulls the latest STAGING image you built in the Frontend Repo
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/weaveit-ui-staging:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Tell the stable frontend to talk to our NEW backend
+      NEXT_PUBLIC_API_URL: http://backend:3001
+    depends_on:
+      - backend
