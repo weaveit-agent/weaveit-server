@@ -13,7 +13,7 @@ import usersRoute from './usersRoute';
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
@@ -29,7 +29,7 @@ app.use('/api', usersRoute);
 app.get('/api/videos/job/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    
+
     const videoBuffer = await getVideoByJobId(jobId);
 
     if (!videoBuffer) {
@@ -52,7 +52,7 @@ app.get('/api/videos/job/:jobId', async (req, res) => {
 app.get('/api/videos/:videoId', async (req, res) => {
   try {
     const { videoId } = req.params;
-    
+
     const videoBuffer = await getVideoByVideoId(videoId);
 
     if (!videoBuffer) {
@@ -75,7 +75,7 @@ app.get('/api/videos/:videoId', async (req, res) => {
 app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
   try {
     const { walletAddress } = req.params;
-    
+
     const videos = await getVideosByWallet(walletAddress);
 
     res.json({
@@ -101,7 +101,7 @@ app.get('/api/wallet/:walletAddress/videos', async (req, res) => {
 app.get('/api/wallet/:walletAddress/content', async (req, res) => {
   try {
     const { walletAddress } = req.params;
-    
+
     const content = await getContentByWallet(walletAddress);
 
     res.json({
@@ -129,7 +129,7 @@ app.get('/api/wallet/:walletAddress/content', async (req, res) => {
 app.get('/api/audio/job/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
-    
+
     const audioBuffer = await getAudioByJobId(jobId);
 
     if (!audioBuffer) {
@@ -153,7 +153,7 @@ app.get('/api/audio/job/:jobId', async (req, res) => {
 app.get('/api/audio/:audioId', async (req, res) => {
   try {
     const { audioId } = req.params;
-    
+
     const audioBuffer = await getAudioByAudioId(audioId);
 
     if (!audioBuffer) {
