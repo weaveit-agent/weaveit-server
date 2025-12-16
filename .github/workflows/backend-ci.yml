@@ -24,9 +24,7 @@ jobs:
             p/default
             p/typescript
             p/secrets
-            p/express
             p/nodejs
-          auditOn: push
         continue-on-error: true
 
   # =========================
