@@ -86,8 +86,8 @@ jobs:
           # 🟢 We pass MOCK keys. The server will start, but DB calls will fail.
           # That is okay! We just want to check if the HTTP server listens.
           docker run -d --name test-backend \
-            -p 8080:8080 \
-            -e PORT=8080 \
+            -p 3001:3001 \
+            -e PORT=3001 \
             -e NODE_ENV=production \
             -e DATABASE_URL="postgresql://mockuser:mockpass@localhost:5432/mockdb" \
             -e OPENAI_API_KEY="sk-mock-key-for-testing-only" \
