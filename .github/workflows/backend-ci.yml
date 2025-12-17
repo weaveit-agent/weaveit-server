@@ -126,5 +126,5 @@ jobs:
 
       # D. Push Staging Image (Only on Master)
       - name: Push Staging Image
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/dev'
         run: docker push $FULL_IMAGE
