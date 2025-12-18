@@ -25,6 +25,11 @@ app.use('/api', generateAudioRoute);
 app.use('/api', paymentsRoute);
 app.use('/api', usersRoute);
 
+
+// 🟢 ADD THIS: A simple health check route
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date() });
+});
 // Video serving endpoint - serves video data from database by job ID
 app.get('/api/videos/job/:jobId', async (req, res) => {
   try {

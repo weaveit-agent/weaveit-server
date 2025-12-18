@@ -24,7 +24,7 @@ RUN npm run build
 # ==========================================
 # 2. RUNNER STAGE: Production Image
 # ==========================================
-FROM node:20-bullseye-slim AS runner
+FROM node:20-bullseye AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
