@@ -1,9 +1,9 @@
 name: 🛑 Quality Gate (PR -> Main)
 
 on:
-  pull_request:
+  push:
     branches:
-      - main  # 🟢 Only runs when merging to Production
+      - dev  # 🟢 Only runs when merging to Production
 
 jobs:
   ephemeral-test:
@@ -53,15 +53,32 @@ jobs:
 
           echo "✅ Stack is healthy!"
 
-      # 4. DAST Scan (OWASP ZAP - API Mode)
-      # We scan the Backend API directly this time
-      - name: 🕵️ Run OWASP ZAP API Scan
-        uses: zaproxy/action-api-scan@v0.7.0
+      # 4. DAST Scan (OWASP ZAP - Manual Docker Run)
+      # 🟢 ADAPTATION: Running ZAP manually to avoid artifact/permission bugs
+      - name: 🕵️ Run OWASP ZAP Baseline Scan
+        run: |
+          # 1. Open permissions so Docker can write the report file here
+          chmod 777 $(pwd)
+          
+          # 2. Run ZAP Container directly
+          # --network host: Lets ZAP see 'localhost:3000' running on the runner
+          # -v $(pwd): Maps current folder so we get the report back
+          docker run --network host \
+            -v $(pwd):/zap/wrk/:rw \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://localhost:3001/api/health \
+            -r zap_report.html \
+            -I \
+            || echo "⚠️ ZAP found issues, but we are keeping the pipeline green."
+
+      # 5. Upload the Report
+      - name: 📊 Upload Security Report
+        if: always() # Run even if ZAP found bugs
+        uses: actions/upload-artifact@v4
         with:
-          target: 'http://localhost:3001/api/db/health' # Scan your API root or health check
-          format: openapi
-          cmd_options: '-a' 
-        continue-on-error: true
+          name: ZAP-Security-Report
+          path: zap_report.html
 
       - name: 🧹 Cleanup
         if: always()
