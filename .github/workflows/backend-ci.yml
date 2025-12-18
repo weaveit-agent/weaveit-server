@@ -110,7 +110,7 @@ jobs:
           # Note: This might return 500 because the Mock DB connection will fail.
           # We accept 200 OR 500. Both mean the server IS running and responding.
           # If the server was dead, we would get 000 (Connection Refused).
-          status_code=$(curl --write-out %{http_code} --silent --output /dev/null http://localhost:3001/api/db/health)
+          status_code=$(curl --write-out %{http_code} --silent --output /dev/null http://localhost:3001/api/health)
 
           echo "Server responded with Status Code: $status_code"
 
